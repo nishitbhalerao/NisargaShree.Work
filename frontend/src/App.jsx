@@ -16,6 +16,8 @@ function App() {
     additionalNotes: ''
   });
 
+
+
   // Calculate total cart items and price
   const getTotalItems = () => {
     return cart.roti.quantity + cart.puranPoli.quantity;
@@ -68,6 +70,8 @@ function App() {
       [field]: value
     }));
   };
+
+
 
   const LandingPage = () => (
     <div className="landing-page">
