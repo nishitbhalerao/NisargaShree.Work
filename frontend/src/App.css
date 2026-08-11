@@ -1183,3 +1183,369 @@ body {
   }
 }
 
+
+/* ── Notification Banner ── */
+.notification-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: #27ae60;
+  color: #fff;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  animation: slideDown 0.4s ease;
+}
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
+}
+.notif-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+/* ── Track Order nav button ── */
+.track-nav {
+  background: #27ae60 !important;
+  color: white !important;
+  border-color: #27ae60 !important;
+  font-weight: 600;
+}
+.track-nav:hover { background: #219a52 !important; }
+
+/* ── Error message ── */
+.error-msg {
+  background: #fdecea;
+  color: #c0392b;
+  border: 1px solid #e74c3c;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+}
+
+/* ── Confirmation Page ── */
+.confirmation-page { min-height: 100vh; background: #f8f9fa; }
+
+.confirmation-card {
+  max-width: 600px;
+  margin: 40px auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+}
+.confirmation-icon { font-size: 4rem; margin-bottom: 16px; }
+.confirmation-card h2 { color: #27ae60; margin-bottom: 12px; }
+.order-id-display, .order-total-display, .order-type-display {
+  font-size: 1.05rem;
+  margin: 6px 0;
+  color: #555;
+}
+
+/* ── Status Tracker ── */
+.status-tracker { margin-top: 32px; }
+.status-tracker h3 { margin-bottom: 16px; color: #333; }
+
+.live-status-badge {
+  display: inline-block;
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 24px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.status-note { font-size: 0.85rem; color: #888; margin-bottom: 24px; }
+
+/* Progress steps */
+.progress-steps {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 90px;
+  position: relative;
+}
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  width: 100%;
+  height: 3px;
+  background: #ddd;
+  z-index: 0;
+}
+.step.done:not(:last-child)::after { background: #27ae60; }
+.step-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ddd;
+  border: 3px solid #ddd;
+  z-index: 1;
+  position: relative;
+}
+.step.done .step-dot  { background: #27ae60; border-color: #27ae60; }
+.step.active .step-dot { background: #fff; border-color: #27ae60; box-shadow: 0 0 0 4px rgba(39,174,96,0.2); }
+.step-label {
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 6px;
+  text-align: center;
+  max-width: 80px;
+}
+.step.done .step-label  { color: #27ae60; font-weight: 600; }
+.step.active .step-label { color: #27ae60; font-weight: 700; }
+/* Card image needs position relative for absolute positioned button */
+.card-image {
+  position: relative;
+}
+
+/* ── Card Header Section (Title + Subscription Button) ── */
+.card-header-section {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.card-header-section h4 {
+  margin: 0;
+  flex: 1;
+}
+
+/* ── Subscription Button on Card ── */
+.subscription-btn {
+  background: #8e44ad;
+  color: #fff;
+  border: none;
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.subscription-btn:hover { 
+  background: #732d91; 
+  transform: translateY(-1px);
+}
+
+/* ── Selected Variants Display ── */
+.selected-variants {
+  margin-top: 12px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+.variant-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  margin: 2px 0;
+  color: #495057;
+}
+
+/* ── Modal Styles ── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-content {
+  background: #fff;
+  border-radius: 16px;
+  max-width: 500px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #eee;
+}
+.modal-header h3 { margin: 0; color: #333; }
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
+  padding: 4px;
+}
+.modal-body { padding: 20px 24px; }
+
+/* ── Puran Poli Variants ── */
+.variant-options {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.variant-card {
+  flex: 1;
+  min-width: 200px;
+  border: 2px solid #eee;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.variant-card:hover { border-color: #e74c3c; }
+.variant-card img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.variant-card h4 { margin: 8px 0 4px; color: #333; }
+.variant-card p { font-size: 0.85rem; color: #666; margin: 4px 0 8px; }
+.variant-price {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #e74c3c;
+  margin: 8px 0 12px;
+}
+.variant-btn {
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.variant-btn:hover { background: #c0392b; }
+
+/* ── Subscription Modal ── */
+.subscription-modal { max-width: 700px; }
+.form-section { margin-bottom: 24px; }
+.form-section h4 {
+  margin: 0 0 16px;
+  color: #333;
+  font-size: 1.1rem;
+  border-bottom: 2px solid #e74c3c;
+  padding-bottom: 8px;
+}
+.form-group { margin-bottom: 16px; }
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 600;
+  color: #555;
+}
+.form-group input, .form-group textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+.form-group input:focus, .form-group textarea:focus {
+  outline: none;
+  border-color: #e74c3c;
+  box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.1);
+}
+
+/* ── Calendar Grid ── */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+.calendar-date {
+  background: #fff;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  padding: 8px 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+.calendar-date:hover { border-color: #e74c3c; }
+.calendar-date.selected {
+  background: #e74c3c;
+  border-color: #e74c3c;
+  color: #fff;
+}
+.date-day { font-size: 1.1rem; font-weight: 700; }
+.date-month { font-size: 0.7rem; opacity: 0.8; }
+
+.selection-summary {
+  font-size: 0.9rem;
+  color: #666;
+  margin-top: 8px;
+  text-align: center;
+  background: #f8f9fa;
+  padding: 8px;
+  border-radius: 6px;
+}
+
+/* ── Subscription Actions ── */
+.subscription-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #eee;
+}
+.cancel-btn {
+  background: #6c757d;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.cancel-btn:hover { background: #5a6268; }
+.subscribe-btn {
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 24px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 1rem;
+}
+.subscribe-btn:hover { background: #c0392b; }
+.subscribe-btn:disabled { opacity: 0.6; cursor: not-allowed; }

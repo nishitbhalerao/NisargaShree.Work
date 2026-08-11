@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import axios from 'axios';
 import './App.css';
+
+const API = '/api';
 
 function App() {
   const [selectedOption, setSelectedOption] = useState(null);
   const [cart, setCart] = useState({
-    roti: { quantity: 0, price: 40 },
-    puranPoli: { quantity: 0, price: 80 }
+    roti: { quantity: 0, price: 12 },
+    puranPoli: { quantity: 0, price: 40 },
+    sahiPuranPoli: { quantity: 0, price: 60 }
   });
-  const [orderType, setOrderType] = useState('delivery'); // Set default to delivery
+  const [orderType, setOrderType] = useState('delivery');
   const [orderDetails, setOrderDetails] = useState({
     takeawayTime: '',
     customerName: '',
@@ -16,66 +20,237 @@ function App() {
     additionalNotes: ''
   });
 
+  // Modal states
+  const [showPuranPoliModal, setShowPuranPoliModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  
+  // Subscription state
+  const [subscription, setSubscription] = useState({
+    quantity: 1,
+    selectedDates: [],
+    customerName: '',
+    phoneNumber: '',
+    address: '',
+    deliveryInstructions: ''
+  });
+  const [placingSubscription, setPlacingSubscription] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState('');
 
+  // After order is placed
+  const [placedOrder, setPlacedOrder] = useState(null); // { orderId, total, orderType }
+  const [orderStatus, setOrderStatus] = useState(null); // live status from DB
+  const [placing, setPlacing] = useState(false);
+  const [placeError, setPlaceError] = useState('');
 
-  // Calculate total cart items and price
-  const getTotalItems = () => {
-    return cart.roti.quantity + cart.puranPoli.quantity;
-  };
+  // Notification banner
+  const [notification, setNotification] = useState(null);
+  const prevStatusRef = useRef(null);
 
-  const getTotalPrice = () => {
-    return (cart.roti.quantity * cart.roti.price) + (cart.puranPoli.quantity * cart.puranPoli.price);
-  };
+  // Poll order status every 8 seconds when an order is placed
+  useEffect(() => {
+    if (!placedOrder) return;
 
-  // Update cart quantity
+    const poll = async () => {
+      try {
+        const res = await axios.get(`${API}/orders/${placedOrder.orderId}`);
+        const newStatus = res.data.orderStatus;
+
+        // Show notification when status changes to ready
+        if (
+          prevStatusRef.current !== null &&
+          prevStatusRef.current !== newStatus &&
+          newStatus === 'ready'
+        ) {
+          setNotification('🎉 Your order is ready! Please collect it or our delivery partner is on the way.');
+        }
+
+        // Also notify for out_for_delivery
+        if (
+          prevStatusRef.current !== null &&
+          prevStatusRef.current !== newStatus &&
+          newStatus === 'out_for_delivery'
+        ) {
+          setNotification('🚚 Your order is out for delivery! It will reach you shortly.');
+        }
+
+        prevStatusRef.current = newStatus;
+        setOrderStatus(newStatus);
+      } catch (err) {
+        // silent fail on poll
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 8000);
+    return () => clearInterval(interval);
+  }, [placedOrder]);
+
+  // Helpers
+  const getTotalItems = () => cart.roti.quantity + cart.puranPoli.quantity + cart.sahiPuranPoli.quantity;
+  const getTotalPrice = () =>
+    cart.roti.quantity * cart.roti.price + 
+    cart.puranPoli.quantity * cart.puranPoli.price + 
+    cart.sahiPuranPoli.quantity * cart.sahiPuranPoli.price;
+
   const updateQuantity = (item, change) => {
     setCart(prev => ({
       ...prev,
-      [item]: {
-        ...prev[item],
-        quantity: Math.max(0, prev[item].quantity + change)
-      }
+      [item]: { ...prev[item], quantity: Math.max(0, prev[item].quantity + change) }
     }));
   };
 
-  // Clear entire cart
   const clearCart = () => {
-    setCart({
-      roti: { quantity: 0, price: 40 },
-      puranPoli: { quantity: 0, price: 80 }
-    });
+    setCart({ roti: { quantity: 0, price: 12 }, puranPoli: { quantity: 0, price: 40 }, sahiPuranPoli: { quantity: 0, price: 60 } });
   };
 
-  // Generate time slots (current time + 30 minutes to current time + 3 hours)
   const generateTimeSlots = () => {
     const slots = [];
     const now = new Date();
-    const startTime = new Date(now.getTime() + 30 * 60000); // 30 minutes from now
-    const endTime = new Date(now.getTime() + 3 * 60 * 60000); // 3 hours from now
-    
-    for (let time = new Date(startTime); time <= endTime; time.setMinutes(time.getMinutes() + 15)) {
-      const timeString = time.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: true 
-      });
-      slots.push(timeString);
+    const startTime = new Date(now.getTime() + 30 * 60000);
+    const endTime = new Date(now.getTime() + 3 * 60 * 60000);
+    for (let t = new Date(startTime); t <= endTime; t.setMinutes(t.getMinutes() + 15)) {
+      slots.push(t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }));
     }
     return slots;
   };
 
   const handleOrderDetailsChange = (field, value) => {
-    setOrderDetails(prev => ({
+    setOrderDetails(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Build items array for API
+  const buildItems = () => {
+    const items = [];
+    if (cart.roti.quantity > 0)
+      items.push({ _id: 'roti', name: 'Poli (Fresh Roti)', price: cart.roti.price, quantity: cart.roti.quantity });
+    if (cart.puranPoli.quantity > 0)
+      items.push({ _id: 'puranPoli', name: 'Puran Poli', price: cart.puranPoli.price, quantity: cart.puranPoli.quantity });
+    if (cart.sahiPuranPoli.quantity > 0)
+      items.push({ _id: 'sahiPuranPoli', name: 'Sahi Puran Poli', price: cart.sahiPuranPoli.price, quantity: cart.sahiPuranPoli.quantity });
+    return items;
+  };
+
+  // Place order
+  const handlePlaceOrder = async () => {
+    setPlacing(true);
+    setPlaceError('');
+    try {
+      const items = buildItems();
+      const customerInfo = {
+        name: orderType === 'delivery' ? orderDetails.customerName : 'Takeaway Customer',
+        phone: orderType === 'delivery' ? orderDetails.phoneNumber : '0000000000',
+        address: orderType === 'delivery' ? orderDetails.address : '',
+        deliveryInstructions: orderDetails.additionalNotes || ''
+      };
+
+      const body = {
+        items,
+        customerInfo,
+        orderType,
+        total: getTotalPrice(),
+        pickupTime: orderType === 'takeaway' ? orderDetails.takeawayTime : null
+      };
+
+      const res = await axios.post(`${API}/orders`, body);
+      const placed = { orderId: res.data.orderId, total: res.data.total, orderType };
+      setPlacedOrder(placed);
+      setOrderStatus('placed');
+      prevStatusRef.current = 'placed';
+      clearCart();
+      setSelectedOption('confirmation');
+    } catch (err) {
+      setPlaceError(err.response?.data?.error || 'Failed to place order. Please try again.');
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  // Place subscription
+  const handlePlaceSubscription = async () => {
+    if (!subscription.customerName || !subscription.phoneNumber || !subscription.address || subscription.selectedDates.length === 0) {
+      setSubscriptionError('Please fill all required fields and select at least one date.');
+      return;
+    }
+
+    setPlacingSubscription(true);
+    setSubscriptionError('');
+    try {
+      const customerInfo = {
+        name: subscription.customerName,
+        phone: subscription.phoneNumber,
+        address: subscription.address,
+        deliveryInstructions: subscription.deliveryInstructions
+      };
+
+      const item = {
+        name: 'Poli (Fresh Roti)',
+        price: 12,
+        quantity: subscription.quantity
+      };
+
+      const totalAmount = subscription.selectedDates.length * subscription.quantity * 12;
+
+      const body = {
+        customerInfo,
+        item,
+        selectedDates: subscription.selectedDates,
+        totalAmount
+      };
+
+      await axios.post(`${API}/subscriptions`, body);
+      
+      setShowSubscriptionModal(false);
+      setSubscription({ quantity: 1, selectedDates: [], customerName: '', phoneNumber: '', address: '', deliveryInstructions: '' });
+      alert(`Subscription created successfully! Total: ₹${totalAmount} for ${subscription.selectedDates.length} days`);
+    } catch (err) {
+      setSubscriptionError(err.response?.data?.error || 'Failed to create subscription. Please try again.');
+    } finally {
+      setPlacingSubscription(false);
+    }
+  };
+
+  const toggleDateSelection = (dateStr) => {
+    setSubscription(prev => ({
       ...prev,
-      [field]: value
+      selectedDates: prev.selectedDates.includes(dateStr)
+        ? prev.selectedDates.filter(d => d !== dateStr)
+        : [...prev.selectedDates, dateStr].sort()
     }));
   };
 
+  const generateCalendarDates = () => {
+    const dates = [];
+    const today = new Date();
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    return dates;
+  };
 
+  const statusLabel = {
+    placed: '✅ Order Placed',
+    preparing: '👨‍🍳 Being Prepared',
+    ready: '🎉 Ready!',
+    out_for_delivery: '🚚 Out for Delivery',
+    delivered: '✔️ Delivered',
+    cancelled: '❌ Cancelled'
+  };
+
+  const statusColor = {
+    placed: '#3498db',
+    preparing: '#f39c12',
+    ready: '#27ae60',
+    out_for_delivery: '#8e44ad',
+    delivered: '#2ecc71',
+    cancelled: '#e74c3c'
+  };
+
+  /* ─── Pages ─── */
 
   const LandingPage = () => (
     <div className="landing-page">
-      {/* Header */}
       <header className="header">
         <div className="container">
           <div className="logo">
@@ -89,190 +264,122 @@ function App() {
             <button className="nav-btn cart-nav" onClick={() => setSelectedOption('cart')}>
               🛒 Cart ({getTotalItems()})
             </button>
+            {placedOrder && (
+              <button className="nav-btn track-nav" onClick={() => setSelectedOption('confirmation')}>
+                📦 Track Order
+              </button>
+            )}
             <button className="nav-btn">About Us</button>
             <button className="nav-btn">Contact</button>
           </nav>
         </div>
       </header>
 
-      {/* Hero Section */}
       <section className="hero">
         <div className="hero-content">
           <h2>Grace In Every Taste</h2>
-          <p><b>Freshly made, authentic Maharastrian  cuisine delivered to your doorstep</b></p>
+          <p><b>Freshly made, authentic Maharastrian cuisine delivered to your doorstep</b></p>
         </div>
       </section>
 
-      {/* Main Options */}
       <section className="main-options">
         <div className="container">
           <h3>Choose Your Experience</h3>
           <div className="options-grid">
-            
-            {/* Option 1: Fresh Rotis */}
             <div className="option-card">
               <div className="card-image">
-                <img 
-                  src="/images/roti.jpeg" 
-                  alt="Fresh Rotis"
-                />
+                <img src="/images/roti.jpeg" alt="Fresh Rotis" />
                 <div className="card-overlay">
                   <span className="card-tag">Fresh Daily</span>
                 </div>
               </div>
               <div className="card-content">
-                <h4>Poli</h4>
-                <p>Handmade chapatis, parathas, and traditional breads made fresh daily with premium ingredients</p>
-                <div className="price-section">
-                  <span className="price">₹40 per piece</span>
-                </div>
-                {cart.roti.quantity === 0 ? (
-                  <button 
-                    className="order-btn"
-                    onClick={() => updateQuantity('roti', 1)}
-                  >
-                    Order Fresh Rotis
+                <div className="card-header-section">
+                  <h4>Poli</h4>
+                  <button className="subscription-btn" onClick={() => setShowSubscriptionModal(true)}>
+                    📅 Subscription
                   </button>
+                </div>
+                <p>Handmade chapatis, parathas, and traditional breads made fresh daily with premium ingredients</p>
+                <div className="price-section"><span className="price">₹12 per piece</span></div>
+                {cart.roti.quantity === 0 ? (
+                  <button className="order-btn" onClick={() => updateQuantity('roti', 1)}>Order Fresh Rotis</button>
                 ) : (
                   <div className="quantity-section">
                     <div className="quantity-controls">
-                      <button 
-                        className="qty-btn"
-                        onClick={() => updateQuantity('roti', -1)}
-                      >
-                        −
-                      </button>
+                      <button className="qty-btn" onClick={() => updateQuantity('roti', -1)}>−</button>
                       <span className="quantity">{cart.roti.quantity}</span>
-                      <button 
-                        className="qty-btn"
-                        onClick={() => updateQuantity('roti', 1)}
-                      >
-                        +
-                      </button>
+                      <button className="qty-btn" onClick={() => updateQuantity('roti', 1)}>+</button>
                     </div>
-                    <div className="item-total">
-                      Total: ₹{cart.roti.quantity * cart.roti.price}
-                    </div>
+                    <div className="item-total">Total: ₹{cart.roti.quantity * cart.roti.price}</div>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Option 2: Puran Poli */}
             <div className="option-card">
               <div className="card-image">
-                <img 
-                  src="/images/puran-poli.jpeg" 
-                  alt="Puran Poli"
-                />
-                <div className="card-overlay">
-                  <span className="card-tag">Traditional</span>
-                </div>
+                <img src="/images/puran-poli.jpeg" alt="Puran Poli" />
+                <div className="card-overlay"><span className="card-tag">Traditional</span></div>
               </div>
               <div className="card-content">
-                <h4>Puran Poli</h4>
-                <p>Traditional Maharashtrian sweet flatbread stuffed with jaggery and lentil filling - a classic dessert</p>
-                <div className="price-section">
-                  <span className="price">₹80 per piece</span>
-                </div>
-                {cart.puranPoli.quantity === 0 ? (
-                  <button 
-                    className="order-btn"
-                    onClick={() => updateQuantity('puranPoli', 1)}
-                  >
-                    Order Puran Poli
-                  </button>
-                ) : (
-                  <div className="quantity-section">
-                    <div className="quantity-controls">
-                      <button 
-                        className="qty-btn"
-                        onClick={() => updateQuantity('puranPoli', -1)}
-                      >
-                        −
-                      </button>
-                      <span className="quantity">{cart.puranPoli.quantity}</span>
-                      <button 
-                        className="qty-btn"
-                        onClick={() => updateQuantity('puranPoli', 1)}
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div className="item-total">
-                      Total: ₹{cart.puranPoli.quantity * cart.puranPoli.price}
-                    </div>
+                <h4>Puran Poli Varieties</h4>
+                <p>Traditional Maharashtrian sweet flatbread stuffed with jaggery and lentil filling - choose your favorite!</p>
+                <div className="price-section"><span className="price">Starting from ₹40</span></div>
+                <button className="order-btn" onClick={() => setShowPuranPoliModal(true)}>
+                  Choose Puran Poli
+                </button>
+                {(cart.puranPoli.quantity > 0 || cart.sahiPuranPoli.quantity > 0) && (
+                  <div className="selected-variants">
+                    {cart.puranPoli.quantity > 0 && (
+                      <div className="variant-item">
+                        <span>Puran Poli × {cart.puranPoli.quantity}</span>
+                        <span>₹{cart.puranPoli.quantity * cart.puranPoli.price}</span>
+                      </div>
+                    )}
+                    {cart.sahiPuranPoli.quantity > 0 && (
+                      <div className="variant-item">
+                        <span>Sahi Puran Poli × {cart.sahiPuranPoli.quantity}</span>
+                        <span>₹{cart.sahiPuranPoli.quantity * cart.sahiPuranPoli.price}</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
-
           </div>
         </div>
       </section>
 
-      {/* Cart Summary - Show when items in cart */}
       {getTotalItems() > 0 && (
         <div className="cart-summary">
           <div className="cart-info">
             <span className="cart-count">{getTotalItems()} item{getTotalItems() > 1 ? 's' : ''}</span>
             <span className="cart-total">₹{getTotalPrice()}</span>
           </div>
-          <button className="checkout-btn" onClick={() => setSelectedOption('cart')}>
-            View Cart & Checkout
-          </button>
+          <button className="checkout-btn" onClick={() => setSelectedOption('cart')}>View Cart & Checkout</button>
         </div>
       )}
 
-      {/* Features Section */}
       <section className="features-section">
         <div className="container">
           <div className="features-grid">
-            <div className="feature">
-              <div className="feature-icon">⏰</div>
-              <h4>Fresh Daily</h4>
-              <p>Made fresh every morning with traditional methods</p>
-            </div>
-            <div className="feature">
-              <div className="feature-icon">🚚</div>
-              <h4>Quick Delivery</h4>
-              <p>Hot and fresh delivery within 45 minutes</p>
-            </div>
-            <div className="feature">
-              <div className="feature-icon">🌿</div>
-              <h4>Natural Ingredients</h4>
-              <p>Only premium, natural ingredients used</p>
-            </div>
-            <div className="feature">
-              <div className="feature-icon">👨‍🍳</div>
-              <h4>Traditional Recipes</h4>
-              <p>Time-tested family recipes passed down generations</p>
-            </div>
+            <div className="feature"><div className="feature-icon">⏰</div><h4>Fresh Daily</h4><p>Made fresh every morning with traditional methods</p></div>
+            <div className="feature"><div className="feature-icon">🚚</div><h4>Quick Delivery</h4><p>Hot and fresh delivery within 45 minutes</p></div>
+            <div className="feature"><div className="feature-icon">🌿</div><h4>Natural Ingredients</h4><p>Only premium, natural ingredients used</p></div>
+            <div className="feature"><div className="feature-icon">👨‍🍳</div><h4>Traditional Recipes</h4><p>Time-tested family recipes passed down generations</p></div>
           </div>
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="footer">
         <div className="container">
           <div className="footer-content">
-            <div className="footer-section">
-              <h4>Nisargashree</h4>
-              <p>Authentic traditional food made with love</p>
-            </div>
-            <div className="footer-section">
-              <h4>Contact</h4>
-              <p>📞 +91 9876543210</p>
-              <p>📧 connect at :-nisargashree@gmail.com</p>
-            </div>
-            <div className="footer-section">
-              <h4>Delivery Areas</h4>
-              <p> Pune , Pimpri Chinchwad  </p>
-            </div>
+            <div className="footer-section"><h4>Nisargashree</h4><p>Authentic traditional food made with love</p></div>
+            <div className="footer-section"><h4>Contact</h4><p>📞 +91 9876543210</p><p>📧 nisargashree@gmail.com</p></div>
+            <div className="footer-section"><h4>Delivery Areas</h4><p>Pune, Pimpri Chinchwad</p></div>
           </div>
-          <div className="footer-bottom">
-            <p>&copy; 2022 Nisargashree. All rights reserved.</p>
-          </div>
+          <div className="footer-bottom"><p>&copy; 2022 Nisargashree. All rights reserved.</p></div>
         </div>
       </footer>
     </div>
@@ -282,26 +389,19 @@ function App() {
     <div className="cart-page">
       <header className="product-header">
         <div className="header-left">
-          <button className="back-btn" onClick={() => setSelectedOption(null)}>
-            ← Back to Home
-          </button>
+          <button className="back-btn" onClick={() => setSelectedOption(null)}>← Back to Home</button>
           <h2>Your Cart</h2>
         </div>
         {getTotalItems() > 0 && (
-          <button className="clear-cart-btn" onClick={clearCart}>
-            🗑️ Clear Cart
-          </button>
+          <button className="clear-cart-btn" onClick={clearCart}>🗑️ Clear Cart</button>
         )}
       </header>
-      
       <div className="container">
         {getTotalItems() === 0 ? (
           <div className="empty-cart">
             <h3>Your cart is empty</h3>
             <p>Add some delicious items to get started!</p>
-            <button className="order-btn" onClick={() => setSelectedOption(null)}>
-              Continue Shopping
-            </button>
+            <button className="order-btn" onClick={() => setSelectedOption(null)}>Continue Shopping</button>
           </div>
         ) : (
           <div className="cart-content">
@@ -309,76 +409,45 @@ function App() {
               {cart.roti.quantity > 0 && (
                 <div className="cart-item">
                   <img src="/images/roti.jpeg" alt="Roti" />
-                  <div className="item-details">
-                    <h4>Fresh Rotis & Breads</h4>
-                    <p>₹{cart.roti.price} per piece</p>
-                  </div>
+                  <div className="item-details"><h4>Poli (Fresh Roti)</h4><p>₹{cart.roti.price} per piece</p></div>
                   <div className="quantity-controls">
-                    <button 
-                      className="qty-btn"
-                      onClick={() => updateQuantity('roti', -1)}
-                    >
-                      −
-                    </button>
+                    <button className="qty-btn" onClick={() => updateQuantity('roti', -1)}>−</button>
                     <span className="quantity">{cart.roti.quantity}</span>
-                    <button 
-                      className="qty-btn"
-                      onClick={() => updateQuantity('roti', 1)}
-                    >
-                      +
-                    </button>
+                    <button className="qty-btn" onClick={() => updateQuantity('roti', 1)}>+</button>
                   </div>
-                  <div className="item-total">
-                    ₹{cart.roti.quantity * cart.roti.price}
-                  </div>
+                  <div className="item-total">₹{cart.roti.quantity * cart.roti.price}</div>
                 </div>
               )}
-              
               {cart.puranPoli.quantity > 0 && (
                 <div className="cart-item">
                   <img src="/images/puran-poli.jpeg" alt="Puran Poli" />
-                  <div className="item-details">
-                    <h4>Puran Poli</h4>
-                    <p>₹{cart.puranPoli.price} per piece</p>
-                  </div>
+                  <div className="item-details"><h4>Puran Poli</h4><p>₹{cart.puranPoli.price} per piece</p></div>
                   <div className="quantity-controls">
-                    <button 
-                      className="qty-btn"
-                      onClick={() => updateQuantity('puranPoli', -1)}
-                    >
-                      −
-                    </button>
+                    <button className="qty-btn" onClick={() => updateQuantity('puranPoli', -1)}>−</button>
                     <span className="quantity">{cart.puranPoli.quantity}</span>
-                    <button 
-                      className="qty-btn"
-                      onClick={() => updateQuantity('puranPoli', 1)}
-                    >
-                      +
-                    </button>
+                    <button className="qty-btn" onClick={() => updateQuantity('puranPoli', 1)}>+</button>
                   </div>
-                  <div className="item-total">
-                    ₹{cart.puranPoli.quantity * cart.puranPoli.price}
+                  <div className="item-total">₹{cart.puranPoli.quantity * cart.puranPoli.price}</div>
+                </div>
+              )}
+              {cart.sahiPuranPoli.quantity > 0 && (
+                <div className="cart-item">
+                  <img src="/images/puran-poli.jpeg" alt="Sahi Puran Poli" />
+                  <div className="item-details"><h4>Sahi Puran Poli</h4><p>₹{cart.sahiPuranPoli.price} per piece</p></div>
+                  <div className="quantity-controls">
+                    <button className="qty-btn" onClick={() => updateQuantity('sahiPuranPoli', -1)}>−</button>
+                    <span className="quantity">{cart.sahiPuranPoli.quantity}</span>
+                    <button className="qty-btn" onClick={() => updateQuantity('sahiPuranPoli', 1)}>+</button>
                   </div>
+                  <div className="item-total">₹{cart.sahiPuranPoli.quantity * cart.sahiPuranPoli.price}</div>
                 </div>
               )}
             </div>
-            
             <div className="cart-summary-section">
-              <div className="summary-row">
-                <span>Subtotal ({getTotalItems()} items)</span>
-                <span>₹{getTotalPrice()}</span>
-              </div>
-              <div className="summary-row">
-                <span>Delivery Fee</span>
-                <span>₹30</span>
-              </div>
-              <div className="summary-row total-row">
-                <span>Total</span>
-                <span>₹{getTotalPrice() + 30}</span>
-              </div>
-              
+              <div className="summary-row"><span>Subtotal ({getTotalItems()} items)</span><span>₹{getTotalPrice()}</span></div>
+              <div className="summary-row total-row"><span>Total</span><span>₹{getTotalPrice()}</span></div>
               <button className="proceed-btn" onClick={() => setSelectedOption('orderType')}>
-                Proceed to Checkout - ₹{getTotalPrice() + 30}
+                Proceed to Checkout - ₹{getTotalPrice()}
               </button>
             </div>
           </div>
@@ -391,19 +460,15 @@ function App() {
     <div className="order-type-page">
       <header className="product-header">
         <div className="header-left">
-          <button className="back-btn" onClick={() => setSelectedOption('cart')}>
-            ← Back to Cart
-          </button>
+          <button className="back-btn" onClick={() => setSelectedOption('cart')}>← Back to Cart</button>
           <h2>Choose Your Order Type</h2>
         </div>
       </header>
-      
       <div className="container">
-        <p className="order-subtitle">Please select your preferred order method before proceeding with payment.</p>
-        
+        <p className="order-subtitle">Please select your preferred order method before proceeding.</p>
         <div className="order-type-grid">
-          {/* Takeaway Option */}
-          <div 
+          {/* Takeaway */}
+          <div
             className={`order-type-card ${orderType === 'takeaway' ? 'selected' : ''}`}
             onClick={() => setOrderType('takeaway')}
           >
@@ -412,40 +477,33 @@ function App() {
               <h3>Option 1: Takeaway</h3>
             </div>
             <p className="order-type-desc">Collect your order directly from our store.</p>
-            
             <div className="instructions">
               <h4>Instructions:</h4>
               <ul>
                 <li>• Pickup is available only from our store location</li>
                 <li>• Please collect your order at your selected pickup time</li>
-                <li>• You can schedule your pickup time during checkout</li>
-                <li>• The latest pickup time available is up to 3 hours from the time you place your order</li>
-                <li>• Example: If you place an order at 10:00 AM, you can select any pickup time up to 1:00 PM</li>
+                <li>• Latest pickup time is up to 3 hours from order placement</li>
               </ul>
               <div className="pickup-address">
                 <strong>Pickup Address:</strong> Shop No. 15, Ground Floor, Nisargashree Complex, MG Road, Mumbai - 400001
               </div>
             </div>
-
             <div className="takeaway-form">
               <h4>Select Pickup Time:</h4>
-              <select 
+              <select
                 value={orderType === 'takeaway' ? orderDetails.takeawayTime : ''}
                 onChange={(e) => handleOrderDetailsChange('takeawayTime', e.target.value)}
                 className="time-select"
-                required
                 disabled={orderType !== 'takeaway'}
               >
                 <option value="">Select pickup time</option>
-                {generateTimeSlots().map((time, index) => (
-                  <option key={index} value={time}>{time}</option>
-                ))}
+                {generateTimeSlots().map((time, i) => <option key={i} value={time}>{time}</option>)}
               </select>
             </div>
           </div>
 
-          {/* Home Delivery Option */}
-          <div 
+          {/* Home Delivery */}
+          <div
             className={`order-type-card ${orderType === 'delivery' ? 'selected' : ''}`}
             onClick={() => setOrderType('delivery')}
           >
@@ -454,64 +512,29 @@ function App() {
               <h3>Option 2: Home Delivery</h3>
             </div>
             <p className="order-type-desc">Get your order delivered to your doorstep.</p>
-            
             <div className="delivery-form">
-              <h4>Please fill in the following details:</h4>
-              
+              <h4>Fill in your details:</h4>
               <div className="form-group">
                 <label>Full Name *</label>
-                <input
-                  type="text"
-                  value={orderType === 'delivery' ? orderDetails.customerName : ''}
-                  onChange={(e) => handleOrderDetailsChange('customerName', e.target.value)}
-                  placeholder="Enter your full name"
-                  required
-                  disabled={orderType !== 'delivery'}
-                />
+                <input type="text" value={orderType === 'delivery' ? orderDetails.customerName : ''} onChange={(e) => handleOrderDetailsChange('customerName', e.target.value)} placeholder="Enter your full name" disabled={orderType !== 'delivery'} />
               </div>
-
               <div className="form-group">
                 <label>Mobile Number *</label>
-                <input
-                  type="tel"
-                  value={orderType === 'delivery' ? orderDetails.phoneNumber : ''}
-                  onChange={(e) => handleOrderDetailsChange('phoneNumber', e.target.value)}
-                  placeholder="Enter your mobile number"
-                  required
-                  disabled={orderType !== 'delivery'}
-                />
+                <input type="tel" value={orderType === 'delivery' ? orderDetails.phoneNumber : ''} onChange={(e) => handleOrderDetailsChange('phoneNumber', e.target.value)} placeholder="Enter your mobile number" disabled={orderType !== 'delivery'} />
               </div>
-
               <div className="form-group">
                 <label>Delivery Address *</label>
-                <textarea
-                  value={orderType === 'delivery' ? orderDetails.address : ''}
-                  onChange={(e) => handleOrderDetailsChange('address', e.target.value)}
-                  placeholder="Enter your complete delivery address"
-                  rows="3"
-                  required
-                  disabled={orderType !== 'delivery'}
-                />
+                <textarea value={orderType === 'delivery' ? orderDetails.address : ''} onChange={(e) => handleOrderDetailsChange('address', e.target.value)} placeholder="Enter your complete delivery address" rows="3" disabled={orderType !== 'delivery'} />
               </div>
-
               <div className="form-group">
                 <label>Additional Notes (Optional)</label>
-                <textarea
-                  value={orderType === 'delivery' ? orderDetails.additionalNotes : ''}
-                  onChange={(e) => handleOrderDetailsChange('additionalNotes', e.target.value)}
-                  placeholder="Any special instructions for delivery"
-                  rows="2"
-                  disabled={orderType !== 'delivery'}
-                />
+                <textarea value={orderType === 'delivery' ? orderDetails.additionalNotes : ''} onChange={(e) => handleOrderDetailsChange('additionalNotes', e.target.value)} placeholder="Any special instructions" rows="2" disabled={orderType !== 'delivery'} />
               </div>
-
               <div className="delivery-note">
-                <h4>Important Information:</h4>
+                <h4>Important:</h4>
                 <ul>
-                  <li>• The product amount will be paid through the website/app during checkout</li>
-                  <li>• Delivery charges are not included in the product price</li>
-                  <li>• The customer is responsible for paying the delivery charges, which will depend on the delivery distance and destination</li>
-                  <li>• By selecting Home Delivery, you agree to pay the applicable delivery fee upon delivery (or as instructed by the store)</li>
+                  <li>• Delivery charges are paid separately on delivery</li>
+                  <li>• By selecting Home Delivery you agree to pay applicable delivery fee</li>
                 </ul>
               </div>
             </div>
@@ -524,47 +547,30 @@ function App() {
               <h3>Order Summary</h3>
               <div className="summary-items">
                 {cart.roti.quantity > 0 && (
-                  <div className="summary-item">
-                    <span>Fresh Rotis & Breads × {cart.roti.quantity}</span>
-                    <span>₹{cart.roti.quantity * cart.roti.price}</span>
-                  </div>
+                  <div className="summary-item"><span>Poli × {cart.roti.quantity}</span><span>₹{cart.roti.quantity * cart.roti.price}</span></div>
                 )}
                 {cart.puranPoli.quantity > 0 && (
-                  <div className="summary-item">
-                    <span>Puran Poli × {cart.puranPoli.quantity}</span>
-                    <span>₹{cart.puranPoli.quantity * cart.puranPoli.price}</span>
-                  </div>
+                  <div className="summary-item"><span>Puran Poli × {cart.puranPoli.quantity}</span><span>₹{cart.puranPoli.quantity * cart.puranPoli.price}</span></div>
                 )}
-                <div className="summary-item subtotal">
-                  <span>Subtotal</span>
-                  <span>₹{getTotalPrice()}</span>
-                </div>
-                {orderType === 'takeaway' && (
-                  <div className="summary-item">
-                    <span>Delivery Fee</span>
-                    <span>₹0 (Takeaway)</span>
-                  </div>
+                {cart.sahiPuranPoli.quantity > 0 && (
+                  <div className="summary-item"><span>Sahi Puran Poli × {cart.sahiPuranPoli.quantity}</span><span>₹{cart.sahiPuranPoli.quantity * cart.sahiPuranPoli.price}</span></div>
                 )}
-                {orderType === 'delivery' && (
-                  <div className="summary-item">
-                    <span>Delivery Fee</span>
-                    <span>Pay on Delivery</span>
-                  </div>
-                )}
-                <div className="summary-item total">
-                  <span>Total to Pay Now</span>
-                  <span>₹{getTotalPrice()}</span>
-                </div>
+                <div className="summary-item subtotal"><span>Subtotal</span><span>₹{getTotalPrice()}</span></div>
+                <div className="summary-item total"><span>Total to Pay Now</span><span>₹{getTotalPrice()}</span></div>
               </div>
-              
-              <button 
+
+              {placeError && <div className="error-msg">⚠️ {placeError}</div>}
+
+              <button
                 className="final-checkout-btn"
                 disabled={
+                  placing ||
                   (orderType === 'takeaway' && !orderDetails.takeawayTime) ||
                   (orderType === 'delivery' && (!orderDetails.customerName || !orderDetails.phoneNumber || !orderDetails.address))
                 }
+                onClick={handlePlaceOrder}
               >
-                Proceed to Payment - ₹{getTotalPrice()}
+                {placing ? 'Placing Order...' : `Proceed to Pay - ₹${getTotalPrice()}`}
               </button>
             </div>
           </div>
@@ -573,11 +579,207 @@ function App() {
     </div>
   );
 
+  const ConfirmationPage = () => (
+    <div className="confirmation-page">
+      <header className="product-header">
+        <div className="header-left">
+          <button className="back-btn" onClick={() => setSelectedOption(null)}>← Back to Home</button>
+          <h2>Order Confirmation</h2>
+        </div>
+      </header>
+      <div className="container">
+        <div className="confirmation-card">
+          <div className="confirmation-icon">🎊</div>
+          <h2>Order Placed Successfully!</h2>
+          <p className="order-id-display">Order ID: <strong>{placedOrder?.orderId}</strong></p>
+          <p className="order-total-display">Total: <strong>₹{placedOrder?.total}</strong></p>
+          <p className="order-type-display">
+            {placedOrder?.orderType === 'takeaway' ? '🛍️ Takeaway' : '🚚 Home Delivery'}
+          </p>
+
+          <div className="status-tracker">
+            <h3>Live Order Status</h3>
+            <div
+              className="live-status-badge"
+              style={{ backgroundColor: statusColor[orderStatus] || '#95a5a6' }}
+            >
+              {statusLabel[orderStatus] || orderStatus}
+            </div>
+            <p className="status-note">This page refreshes automatically every 8 seconds.</p>
+
+            {/* Progress steps */}
+            <div className="progress-steps">
+              {['placed', 'preparing', 'ready', orderType === 'takeaway' ? null : 'out_for_delivery', 'delivered']
+                .filter(Boolean)
+                .map((step, i) => {
+                  const steps = ['placed', 'preparing', 'ready', 'out_for_delivery', 'delivered'].filter(
+                    s => placedOrder?.orderType === 'takeaway' ? s !== 'out_for_delivery' : true
+                  );
+                  const currentIdx = steps.indexOf(orderStatus);
+                  const stepIdx = steps.indexOf(step);
+                  return (
+                    <div key={step} className={`step ${stepIdx <= currentIdx ? 'done' : ''} ${stepIdx === currentIdx ? 'active' : ''}`}>
+                      <div className="step-dot"></div>
+                      <div className="step-label">{statusLabel[step]}</div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="app">
+      {/* Global notification banner */}
+      {notification && (
+        <div className="notification-banner">
+          <span>{notification}</span>
+          <button className="notif-close" onClick={() => setNotification(null)}>✕</button>
+        </div>
+      )}
+
+      {/* Puran Poli Selection Modal */}
+      {showPuranPoliModal && (
+        <div className="modal-overlay" onClick={() => setShowPuranPoliModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Choose Your Puran Poli</h3>
+              <button className="modal-close" onClick={() => setShowPuranPoliModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="variant-options">
+                <div className="variant-card">
+                  <img src="/images/puran-poli.jpeg" alt="Puran Poli" />
+                  <h4>Puran Poli</h4>
+                  <p>Traditional sweet flatbread with jaggery and lentil filling</p>
+                  <div className="variant-price">₹40 per piece</div>
+                  {cart.puranPoli.quantity === 0 ? (
+                    <button className="variant-btn" onClick={() => { updateQuantity('puranPoli', 1); setShowPuranPoliModal(false); }}>
+                      Add to Cart
+                    </button>
+                  ) : (
+                    <div className="quantity-controls">
+                      <button className="qty-btn" onClick={() => updateQuantity('puranPoli', -1)}>−</button>
+                      <span className="quantity">{cart.puranPoli.quantity}</span>
+                      <button className="qty-btn" onClick={() => updateQuantity('puranPoli', 1)}>+</button>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="variant-card">
+                  <img src="/images/puran-poli.jpeg" alt="Sahi Puran Poli" />
+                  <h4>Sahi Puran Poli</h4>
+                  <p>Premium version with extra ghee, nuts and premium ingredients</p>
+                  <div className="variant-price">₹60 per piece</div>
+                  {cart.sahiPuranPoli.quantity === 0 ? (
+                    <button className="variant-btn" onClick={() => { updateQuantity('sahiPuranPoli', 1); setShowPuranPoliModal(false); }}>
+                      Add to Cart
+                    </button>
+                  ) : (
+                    <div className="quantity-controls">
+                      <button className="qty-btn" onClick={() => updateQuantity('sahiPuranPoli', -1)}>−</button>
+                      <span className="quantity">{cart.sahiPuranPoli.quantity}</span>
+                      <button className="qty-btn" onClick={() => updateQuantity('sahiPuranPoli', 1)}>+</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Modal */}
+      {showSubscriptionModal && (
+        <div className="modal-overlay" onClick={() => setShowSubscriptionModal(false)}>
+          <div className="modal-content subscription-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>📅 Poli Subscription Plan</h3>
+              <button className="modal-close" onClick={() => setShowSubscriptionModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="subscription-form">
+                <div className="form-section">
+                  <h4>Subscription Details</h4>
+                  <div className="form-group">
+                    <label>Daily Quantity</label>
+                    <div className="quantity-controls">
+                      <button className="qty-btn" onClick={() => setSubscription(p => ({ ...p, quantity: Math.max(1, p.quantity - 1) }))}>−</button>
+                      <span className="quantity">{subscription.quantity} pieces daily</span>
+                      <button className="qty-btn" onClick={() => setSubscription(p => ({ ...p, quantity: p.quantity + 1 }))}>+</button>
+                    </div>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Select Delivery Dates (₹{12 * subscription.quantity} per day)</label>
+                    <div className="calendar-grid">
+                      {generateCalendarDates().map(dateStr => {
+                        const date = new Date(dateStr);
+                        const isSelected = subscription.selectedDates.includes(dateStr);
+                        return (
+                          <button
+                            key={dateStr}
+                            className={`calendar-date ${isSelected ? 'selected' : ''}`}
+                            onClick={() => toggleDateSelection(dateStr)}
+                          >
+                            <div className="date-day">{date.getDate()}</div>
+                            <div className="date-month">{date.toLocaleDateString('en', { month: 'short' })}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="selection-summary">
+                      Selected: {subscription.selectedDates.length} days | 
+                      Total: ₹{subscription.selectedDates.length * subscription.quantity * 12}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="form-section">
+                  <h4>Delivery Details</h4>
+                  <div className="form-group">
+                    <label>Full Name *</label>
+                    <input type="text" value={subscription.customerName} onChange={(e) => setSubscription(p => ({ ...p, customerName: e.target.value }))} placeholder="Enter your full name" />
+                  </div>
+                  <div className="form-group">
+                    <label>Mobile Number *</label>
+                    <input type="tel" value={subscription.phoneNumber} onChange={(e) => setSubscription(p => ({ ...p, phoneNumber: e.target.value }))} placeholder="Enter your mobile number" />
+                  </div>
+                  <div className="form-group">
+                    <label>Delivery Address *</label>
+                    <textarea value={subscription.address} onChange={(e) => setSubscription(p => ({ ...p, address: e.target.value }))} placeholder="Enter your complete delivery address" rows="3" />
+                  </div>
+                  <div className="form-group">
+                    <label>Delivery Instructions (Optional)</label>
+                    <textarea value={subscription.deliveryInstructions} onChange={(e) => setSubscription(p => ({ ...p, deliveryInstructions: e.target.value }))} placeholder="Any special instructions" rows="2" />
+                  </div>
+                </div>
+
+                {subscriptionError && <div className="error-msg">⚠️ {subscriptionError}</div>}
+
+                <div className="subscription-actions">
+                  <button className="cancel-btn" onClick={() => setShowSubscriptionModal(false)}>Cancel</button>
+                  <button 
+                    className="subscribe-btn" 
+                    disabled={placingSubscription || subscription.selectedDates.length === 0}
+                    onClick={handlePlaceSubscription}
+                  >
+                    {placingSubscription ? 'Creating...' : `Subscribe - ₹${subscription.selectedDates.length * subscription.quantity * 12}`}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedOption === null && <LandingPage />}
       {selectedOption === 'cart' && <CartPage />}
       {selectedOption === 'orderType' && <OrderTypePage />}
+      {selectedOption === 'confirmation' && placedOrder && <ConfirmationPage />}
     </div>
   );
 }
