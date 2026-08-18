@@ -269,7 +269,7 @@ function App() {
                 📦 Track Order
               </button>
             )}
-            <button className="nav-btn">About Us</button>
+            <button className="nav-btn" onClick={() => setSelectedOption('about')}>About Us</button>
             <button className="nav-btn">Contact</button>
           </nav>
         </div>
@@ -631,6 +631,47 @@ function App() {
     </div>
   );
 
+  // About Us Page Component
+  const AboutUsPage = () => (
+    <div className="about-page">
+      <header className="product-header">
+        <div className="header-left">
+          <button className="back-btn" onClick={() => setSelectedOption(null)}>
+            ← Back to Home
+          </button>
+          <h2>About NisargShree</h2>
+        </div>
+      </header>
+      
+      <div className="container">
+        <div className="about-content">
+          <div className="about-section">
+            <h1>About NisargShree</h1>
+            
+            <div className="about-text">
+              <p>
+                NisargShree was born out of a deep connection to the Konkan region — a bond that has shaped our family for years. Long before it became a brand, it was simply a way of life: my father has been involved in Konkan products for a long time, and growing up around that world meant quality, authenticity, and honest trade weren't things I had to learn — they were things I had already lived.
+              </p>
+
+              <p>
+                Formally established in 2022, NisargShree carries that same spirit forward. We believe good products don't need to shout — they simply need to be genuine. What we bring to you isn't just a product line; it's a piece of Konkan itself, offered the way it has always been known within our family — real, rooted, and without pretence.
+              </p>
+
+              <h3>Founder's Vision:</h3>
+              <p>
+                What began as a smaller, part-time idea, soon grew into something far more meaningful. Somewhere through this journey, the vision shifted entirely. A modest ambition turned into a genuine commitment to build NisargShree into a proper, lasting brand.
+              </p>
+
+              <p>
+                Looking ahead, the plan is to grow thoughtfully into the food and hospitality space, opening multiple branches over time. Each one may take its own shape, but every branch will carry forward the same NisargShree identity — the same values, the same roots, the same promise we started with. We're still early in this journey, but it's one we believe leads somewhere bright.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="app">
       {/* Global notification banner */}
@@ -780,6 +821,7 @@ function App() {
       {selectedOption === 'cart' && <CartPage />}
       {selectedOption === 'orderType' && <OrderTypePage />}
       {selectedOption === 'confirmation' && placedOrder && <ConfirmationPage />}
+      {selectedOption === 'about' && <AboutUsPage />}
     </div>
   );
 }
