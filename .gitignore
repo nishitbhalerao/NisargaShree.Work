@@ -32,3 +32,4 @@ Thumbs.db
 # Vite cache
 .vite/
 */.vite/
+**/.vite/
