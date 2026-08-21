@@ -45,6 +45,30 @@ function App() {
   // Notification banner
   const [notification, setNotification] = useState(null);
   const prevStatusRef = useRef(null);
+  
+  // Checkout summary with shipping
+  const [checkoutSummary, setCheckoutSummary] = useState(null);
+  const [loadingSummary, setLoadingSummary] = useState(false);
+
+  // Load checkout summary when order type is selected
+  useEffect(() => {
+    if (selectedOption === 'orderType' && getTotalItems() > 0) {
+      loadCheckoutSummary();
+    }
+  }, [selectedOption]);
+
+  const loadCheckoutSummary = async () => {
+    setLoadingSummary(true);
+    try {
+      const summary = await getCheckoutSummary();
+      setCheckoutSummary(summary);
+    } catch (error) {
+      console.error('Failed to load checkout summary:', error);
+      setPlaceError('Failed to load order summary. Please try again.');
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
 
   // Poll order status every 8 seconds when an order is placed
   useEffect(() => {
@@ -130,8 +154,172 @@ function App() {
     return items;
   };
 
-  // Place order
+  // Get checkout summary with shipping
+  const getCheckoutSummary = async () => {
+    try {
+      const items = buildItems();
+      if (items.length === 0) {
+        throw new Error('Cart is empty');
+      }
+      
+      const res = await axios.post(`${API}/payment/checkout-summary`, { items });
+      return res.data.data;
+    } catch (error) {
+      console.error('Error getting checkout summary:', error);
+      throw error;
+    }
+  };
+
+  // Handle Razorpay payment
+  const handleRazorpayPayment = async (orderData) => {
+    return new Promise((resolve, reject) => {
+      // Check if this is demo mode
+      if (orderData.demo) {
+        // Simulate payment success in demo mode
+        setTimeout(() => {
+          resolve({
+            razorpay_payment_id: 'pay_demo_' + Date.now(),
+            razorpay_order_id: orderData.razorpayOrderId,
+            razorpay_signature: 'demo_signature_' + Date.now(),
+            orderId: orderData.orderId
+          });
+        }, 1000);
+        return;
+      }
+
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'NisargashreE',
+        description: 'Fresh Authentic Food',
+        order_id: orderData.razorpayOrderId,
+        prefill: {
+          name: orderType === 'delivery' ? orderDetails.customerName : 'Customer',
+          contact: orderType === 'delivery' ? orderDetails.phoneNumber : '9999999999',
+          email: 'customer@nisargashree.com'
+        },
+        theme: {
+          color: '#8B4513'
+        },
+        handler: function (response) {
+          resolve({
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_signature: response.razorpay_signature,
+            orderId: orderData.orderId
+          });
+        },
+        modal: {
+          ondismiss: function() {
+            reject(new Error('Payment cancelled by user'));
+          }
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on('payment.failed', function (response) {
+        reject(new Error(`Payment failed: ${response.error.description}`));
+      });
+      
+      rzp.open();
+    });
+  };
+
+  // Verify payment with backend
+  const verifyPayment = async (paymentData) => {
+    try {
+      const res = await axios.post(`${API}/payment/verify`, paymentData);
+      return res.data;
+    } catch (error) {
+      console.error('Payment verification failed:', error);
+      throw error;
+    }
+  };
+
+  // Place order with Razorpay payment
   const handlePlaceOrder = async () => {
+    setPlacing(true);
+    setPlaceError('');
+    
+    try {
+      const items = buildItems();
+      
+      if (items.length === 0) {
+        setPlaceError('Your cart is empty. Please add items before placing order.');
+        return;
+      }
+      
+      // Validate customer info
+      if (orderType === 'delivery') {
+        if (!orderDetails.customerName || !orderDetails.phoneNumber || !orderDetails.address) {
+          setPlaceError('Please fill all required delivery details.');
+          return;
+        }
+      } else if (orderType === 'takeaway') {
+        if (!orderDetails.takeawayTime) {
+          setPlaceError('Please select pickup time for takeaway order.');
+          return;
+        }
+      }
+
+      const customerInfo = {
+        name: orderType === 'delivery' ? orderDetails.customerName : 'Takeaway Customer',
+        phone: orderType === 'delivery' ? orderDetails.phoneNumber : '0000000000',
+        address: orderType === 'delivery' ? orderDetails.address : '',
+        deliveryInstructions: orderDetails.additionalNotes || ''
+      };
+
+      // Create Razorpay order
+      const createOrderRes = await axios.post(`${API}/payment/create-order`, {
+        items,
+        customerInfo,
+        orderType,
+        pickupTime: orderType === 'takeaway' ? orderDetails.takeawayTime : null
+      });
+
+      const orderData = createOrderRes.data.data;
+      
+      // Open Razorpay checkout
+      const paymentResponse = await handleRazorpayPayment(orderData);
+      
+      // Verify payment
+      const verificationResult = await verifyPayment(paymentResponse);
+      
+      if (verificationResult.success) {
+        // Payment successful
+        const placed = { 
+          orderId: verificationResult.orderId, 
+          total: verificationResult.amount, 
+          orderType,
+          paymentId: verificationResult.paymentId
+        };
+        setPlacedOrder(placed);
+        setOrderStatus('preparing'); // Order moves to preparing after payment
+        prevStatusRef.current = 'preparing';
+        clearCart();
+        setSelectedOption('confirmation');
+      } else {
+        setPlaceError('Payment verification failed. Please contact support.');
+      }
+
+    } catch (error) {
+      console.error('Order placement error:', error);
+      
+      if (error.message.includes('Payment cancelled')) {
+        setPlaceError('Payment was cancelled. Your cart has been saved.');
+      } else if (error.message.includes('Payment failed')) {
+        setPlaceError(error.message);
+      } else {
+        setPlaceError(error.response?.data?.error || 'Failed to place order. Please try again.');
+      }
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  // Legacy order placement (COD) - keeping for backward compatibility
+  const handlePlaceOrderCOD = async () => {
     setPlacing(true);
     setPlaceError('');
     try {
@@ -545,19 +733,62 @@ function App() {
           <div className="order-summary-final">
             <div className="final-summary">
               <h3>Order Summary</h3>
-              <div className="summary-items">
-                {cart.roti.quantity > 0 && (
-                  <div className="summary-item"><span>Poli × {cart.roti.quantity}</span><span>₹{cart.roti.quantity * cart.roti.price}</span></div>
-                )}
-                {cart.puranPoli.quantity > 0 && (
-                  <div className="summary-item"><span>Puran Poli × {cart.puranPoli.quantity}</span><span>₹{cart.puranPoli.quantity * cart.puranPoli.price}</span></div>
-                )}
-                {cart.sahiPuranPoli.quantity > 0 && (
-                  <div className="summary-item"><span>Sahi Puran Poli × {cart.sahiPuranPoli.quantity}</span><span>₹{cart.sahiPuranPoli.quantity * cart.sahiPuranPoli.price}</span></div>
-                )}
-                <div className="summary-item subtotal"><span>Subtotal</span><span>₹{getTotalPrice()}</span></div>
-                <div className="summary-item total"><span>Total to Pay Now</span><span>₹{getTotalPrice()}</span></div>
-              </div>
+              
+              {loadingSummary ? (
+                <div className="loading-summary">Loading order summary...</div>
+              ) : checkoutSummary ? (
+                <div className="summary-items">
+                  {checkoutSummary.items.map((item, index) => (
+                    <div key={index} className="summary-item">
+                      <span>{item.name} × {item.quantity}</span>
+                      <span>₹{item.price * item.quantity}</span>
+                    </div>
+                  ))}
+                  <div className="summary-item subtotal">
+                    <span>Subtotal</span>
+                    <span>₹{checkoutSummary.subtotal}</span>
+                  </div>
+                  {checkoutSummary.shippingCharge > 0 && (
+                    <div className="summary-item shipping">
+                      <span>
+                        {orderType === 'delivery' ? 'Delivery Charge' : 'Packaging Charge'}
+                        {checkoutSummary.shippingCharge === 0 && <small> (FREE)</small>}
+                      </span>
+                      <span>₹{checkoutSummary.shippingCharge}</span>
+                    </div>
+                  )}
+                  {checkoutSummary.discount > 0 && (
+                    <div className="summary-item discount">
+                      <span>Discount</span>
+                      <span>-₹{checkoutSummary.discount}</span>
+                    </div>
+                  )}
+                  {checkoutSummary.tax > 0 && (
+                    <div className="summary-item tax">
+                      <span>Tax</span>
+                      <span>₹{checkoutSummary.tax}</span>
+                    </div>
+                  )}
+                  <div className="summary-item total">
+                    <span>Total to Pay</span>
+                    <span>₹{checkoutSummary.totalAmount}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="summary-items">
+                  {cart.roti.quantity > 0 && (
+                    <div className="summary-item"><span>Poli × {cart.roti.quantity}</span><span>₹{cart.roti.quantity * cart.roti.price}</span></div>
+                  )}
+                  {cart.puranPoli.quantity > 0 && (
+                    <div className="summary-item"><span>Puran Poli × {cart.puranPoli.quantity}</span><span>₹{cart.puranPoli.quantity * cart.puranPoli.price}</span></div>
+                  )}
+                  {cart.sahiPuranPoli.quantity > 0 && (
+                    <div className="summary-item"><span>Sahi Puran Poli × {cart.sahiPuranPoli.quantity}</span><span>₹{cart.sahiPuranPoli.quantity * cart.sahiPuranPoli.price}</span></div>
+                  )}
+                  <div className="summary-item subtotal"><span>Subtotal</span><span>₹{getTotalPrice()}</span></div>
+                  <div className="summary-item total"><span>Total to Pay Now</span><span>₹{getTotalPrice()}</span></div>
+                </div>
+              )}
 
               {placeError && <div className="error-msg">⚠️ {placeError}</div>}
 
@@ -565,12 +796,14 @@ function App() {
                 className="final-checkout-btn"
                 disabled={
                   placing ||
+                  loadingSummary ||
                   (orderType === 'takeaway' && !orderDetails.takeawayTime) ||
                   (orderType === 'delivery' && (!orderDetails.customerName || !orderDetails.phoneNumber || !orderDetails.address))
                 }
                 onClick={handlePlaceOrder}
               >
-                {placing ? 'Placing Order...' : `Proceed to Pay - ₹${getTotalPrice()}`}
+                {placing ? 'Placing Order...' : loadingSummary ? 'Loading...' : 
+                  `Pay Now - ₹${checkoutSummary?.totalAmount || getTotalPrice()}`}
               </button>
             </div>
           </div>

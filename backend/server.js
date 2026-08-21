@@ -9,6 +9,16 @@ import Razorpay from 'razorpay';
 import Product from './models/Product.js';
 import Order from './models/Order.js';
 import Subscription from './models/Subscription.js';
+import Payment from './models/Payment.js';
+
+// Import controllers
+import {
+  getCheckoutSummary,
+  createRazorpayOrder,
+  verifyPayment,
+  retryPayment,
+  handleWebhook
+} from './controllers/paymentController.js';
 
 dotenv.config();
 
@@ -16,14 +26,25 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Initialize Razorpay
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+let razorpay = null;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+  try {
+    razorpay = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+    console.log('Razorpay initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize Razorpay:', error.message);
+  }
+} else {
+  console.warn('Razorpay keys not found. Payment features will be disabled.');
+}
 
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.raw({ type: 'application/json' })); // For webhooks
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGODB_URI)
@@ -31,6 +52,21 @@ mongoose.connect(process.env.MONGODB_URI)
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
+
+// Payment routes
+app.post('/api/payment/checkout-summary', getCheckoutSummary);
+app.post('/api/payment/create-order', createRazorpayOrder);
+app.post('/api/payment/verify', verifyPayment);
+app.post('/api/payment/retry/:orderId', retryPayment);
+app.post('/api/payment/webhook', handleWebhook);
+
+// Get Razorpay public key for frontend
+app.get('/api/payment/config', (req, res) => {
+  res.json({
+    keyId: process.env.RAZORPAY_KEY_ID,
+    currency: 'INR'
+  });
+});
 
 // Get all products
 app.get('/api/products', async (req, res) => {
@@ -42,7 +78,7 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Place order directly (without Razorpay, COD / pay-on-delivery flow)
+// Place order directly (legacy support - COD flow)
 app.post('/api/orders', async (req, res) => {
   try {
     const { items, customerInfo, orderType, total, pickupTime } = req.body;

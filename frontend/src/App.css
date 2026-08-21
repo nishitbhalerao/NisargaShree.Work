@@ -1609,3 +1609,49 @@ body {
     font-size: 1rem;
   }
 }
+
+/* Shipping and Payment Styles */
+.summary-item.shipping {
+  color: #e67e22;
+}
+
+.summary-item.discount {
+  color: #27ae60;
+}
+
+.summary-item.tax {
+  color: #8e44ad;
+}
+
+.loading-summary {
+  text-align: center;
+  padding: 20px;
+  color: #7f8c8d;
+  font-style: italic;
+}
+
+.summary-item small {
+  color: #27ae60;
+  font-weight: normal;
+}
+
+/* Payment Status Styles */
+.payment-success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  text-align: center;
+}
+
+.payment-error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  text-align: center;
+}
